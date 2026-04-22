@@ -1,11 +1,20 @@
 # Epic Awesome Gamer
 
-自动领取 Epic Games 每周免费游戏，支持 GitHub Actions 定时运行，验证码识别支持 `Gemini / AiHubMix / GLM`。
+Gracefully claim weekly free games from Epic Store.
 
-这份文档分两部分：
+[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/Ronchy2000/epic-awesome-gamer/epic-gamer.yml?branch=master&style=flat-square)](https://github.com/Ronchy2000/epic-awesome-gamer/actions/workflows/epic-gamer.yml)
+[![Python](https://img.shields.io/badge/python-3.12-blue?style=flat-square)](https://www.python.org/)
+[![License](https://img.shields.io/github/license/Ronchy2000/epic-awesome-gamer?style=flat-square)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/Ronchy2000/epic-awesome-gamer?style=flat-square)](https://github.com/Ronchy2000/epic-awesome-gamer/stargazers)
 
-- 前半部分面向普通用户：照着做就能跑起来。
-- 最后是开发者附录：解释项目结构，以及这次适配里踩过的坑。
+一个面向普通用户的 Epic 周免自动领取项目，支持 GitHub Actions 定时运行，验证码识别支持 `Gemini / AiHubMix / GLM`。
+
+![Checkout Security Check](docs/images/checkout-security-check.png)
+
+这份文档分成两部分：
+
+1. 前半部分面向普通用户，按步骤配置即可使用。
+2. 最后是开发者附录，总结项目结构和这次适配里踩过的坑。
 
 ## 这是什么
 
@@ -16,11 +25,7 @@
 3. 自动进入商品页并完成领取。
 4. 在需要时处理 hCaptcha 和结账页二次安全校验。
 
-默认最推荐的运行方式是 GitHub Actions：
-
-- 不需要自己开电脑挂机。
-- 仓库已经带好工作流。
-- 适合绝大多数用户。
+默认最推荐的运行方式是 GitHub Actions，因为它不需要自己开电脑挂机，仓库也已经带好了可直接使用的工作流。
 
 ## 使用前先确认
 
@@ -38,19 +43,15 @@
 这个项目运行在无头自动化环境里。  
 如果账号开启了邮箱验证码、短信验证码、验证器 App 等二次验证，流程通常会被卡住。
 
-建议到 Epic 账号安全设置里，把这些验证方式先全部关闭，再运行项目。
+建议到 Epic 账号安全设置里，把这些验证方式先全部关闭，再运行项目。否则即使登录页验证码通过，流程也可能在后续被 Epic 的二次验证拦住。
 
-## 5 分钟快速开始
+## 🚀 快速开始
 
 ### 第 1 步：Fork 仓库
 
 把这个仓库 Fork 到你自己的 GitHub 账号下。
 
-建议 Fork 完后立刻改成私有仓库，原因很简单：
-
-- 更适合保存自己的 Actions 配置。
-- 不容易误暴露运行记录。
-- 后续改 Secrets 更安心。
+建议 Fork 完后立刻改成私有仓库。这样更适合保存自己的 Actions 配置，也更不容易误暴露运行记录。
 
 ### 第 2 步：打开 GitHub Actions
 
@@ -59,19 +60,11 @@
 1. 打开 `Actions`
 2. 如果 GitHub 提示是否启用工作流，点击启用
 
-这个仓库里的工作流名称是：
-
-- `Epic Awesome Gamer (Scheduled)`
-
-它默认每天执行一次，你也可以手动触发。
+这个仓库里的工作流名称是 `Epic Awesome Gamer (Scheduled)`，默认每天执行一次，也支持手动触发。
 
 ### 第 3 步：配置 Secrets
 
-进入：
-
-- `Settings`
-- `Secrets and variables`
-- `Actions`
+进入 `Settings` -> `Secrets and variables` -> `Actions`。
 
 然后按下面的表格添加。
 
@@ -79,7 +72,7 @@
 
 如果你想少折腾，优先推荐 GLM。
 
-至少需要这些 Secrets：
+### 最小可用配置
 
 | Secret | 必填 | 示例 | 说明 |
 | --- | --- | --- | --- |
@@ -89,18 +82,15 @@
 | `GLM_API_KEY` | 是 | `xxxxxxxx` | 智谱 API Key |
 | `GLM_MODEL` | 是 | `glm-4.6v-flash` | 视觉模型名 |
 
-通常不需要手动填写下面这些，留空即可：
+### 可选配置
 
-- `GLM_BASE_URL`
-- `CHALLENGE_CLASSIFIER_MODEL`
-- `IMAGE_CLASSIFIER_MODEL`
-- `SPATIAL_POINT_REASONER_MODEL`
-- `SPATIAL_PATH_REASONER_MODEL`
-
-原因是当前代码会自动兜底：
-
-- `GLM_BASE_URL` 默认走 `https://open.bigmodel.cn/api/paas/v4`
-- 4 个任务模型默认跟随 `GLM_MODEL`
+| Secret | 必填 | 示例 | 说明 |
+| --- | --- | --- | --- |
+| `GLM_BASE_URL` | 否 | `https://open.bigmodel.cn/api/paas/v4` | 不填就走默认值 |
+| `CHALLENGE_CLASSIFIER_MODEL` | 否 | 留空 | 留空时跟随 `GLM_MODEL` |
+| `IMAGE_CLASSIFIER_MODEL` | 否 | 留空 | 留空时跟随 `GLM_MODEL` |
+| `SPATIAL_POINT_REASONER_MODEL` | 否 | 留空 | 留空时跟随 `GLM_MODEL` |
+| `SPATIAL_PATH_REASONER_MODEL` | 否 | 留空 | 留空时跟随 `GLM_MODEL` |
 
 ### 一份最小可用的 GLM Secrets 清单
 
@@ -119,8 +109,6 @@ GLM_MODEL=glm-4.6v-flash
 
 如果你不用 GLM，也可以用 Gemini 或 AiHubMix。
 
-需要这些 Secrets：
-
 | Secret | 必填 | 示例 | 说明 |
 | --- | --- | --- | --- |
 | `EPIC_EMAIL` | 是 | `you@example.com` | Epic 登录邮箱 |
@@ -130,6 +118,16 @@ GLM_MODEL=glm-4.6v-flash
 | `GEMINI_BASE_URL` | 否 | `https://aihubmix.com` | 不填就走默认值 |
 | `GEMINI_MODEL` | 否 | `gemini-2.5-pro` | 不填就走默认值 |
 
+## 一次完整配置流程
+
+如果你是第一次使用，建议按下面顺序做：
+
+1. Fork 仓库并启用 Actions。
+2. 在 `Secrets` 中填好 `EPIC_EMAIL`、`EPIC_PASSWORD` 和模型配置。
+3. 手动运行一次 workflow。
+4. 确认是否成功登录、是否成功领取。
+5. 跑通后再交给定时任务。
+
 ## 第 4 步：手动跑一次
 
 进入 `Actions` 页面后：
@@ -138,11 +136,7 @@ GLM_MODEL=glm-4.6v-flash
 2. 点击 `Run workflow`
 3. 等待运行完成
 
-第一次手动跑的目的很明确：
-
-- 检查 Secrets 是否配对了
-- 检查 Epic 账号能不能正常登录
-- 检查模型是否真的能识别当前验证码
+第一次手动跑的目的很明确：先确认 Secrets 配对正确、Epic 账号可以正常登录、模型也确实能识别当前验证码。
 
 ## 第 5 步：看成功没有
 
@@ -171,8 +165,10 @@ All week-free games are already in the library
 
 每次 GitHub Actions 运行结束后，工作流会自动上传两个 artifact：
 
-- `epic-runtime-<run_id>`
-- `epic-logs-<run_id>`
+| Artifact | 内容 |
+| --- | --- |
+| `epic-runtime-<run_id>` | 运行期截图、debug 文本、purchase_debug |
+| `epic-logs-<run_id>` | 运行日志 |
 
 下载位置：
 
@@ -181,10 +177,12 @@ All week-free games are already in the library
 3. 找到 `Artifacts`
 4. 下载 zip 文件
 
-下载后建议先看这两个目录：
+下载后建议先看下面两个目录：
 
-- `app/volumes/runtime/purchase_debug/`
-- `app/volumes/logs/`
+| 目录 | 用途 |
+| --- | --- |
+| `app/volumes/runtime/purchase_debug/` | 看页面截图和中间状态 |
+| `app/volumes/logs/` | 看完整运行日志 |
 
 如果你碰到“明明没领到，但日志里看不明白”，这些文件通常最有用。
 
@@ -192,20 +190,9 @@ All week-free games are already in the library
 
 ### 1. 登录偶尔失败，一次成功一次失败
 
-这是正常现象之一。
+这是正常现象之一。GitHub Actions 使用的是共享云 IP，Epic 对风控比较敏感。常见表现包括登录页验证码一次过、一次不过，偶发 `captcha_invalid`，或者同一个账号隔一会儿又能成功。
 
-GitHub Actions 使用的是共享云 IP，Epic 对风控比较敏感。常见现象包括：
-
-- 登录页验证码一次过，一次不过
-- `captcha_invalid`
-- 登录响应超时
-- 同一个账号隔一会儿又能成功
-
-建议做法：
-
-- 先不要连续狂点十几次重跑
-- 失败后稍等几分钟再跑一次
-- 确认账号已经关闭 2FA
+建议做法是先不要连续狂点十几次重跑，失败后稍等几分钟再跑一次，并确认账号已经关闭 2FA。
 
 ### 2. 页面弹出 `One more step`
 
@@ -218,34 +205,35 @@ GitHub Actions 使用的是共享云 IP，Epic 对风控比较敏感。常见现
 
 常见题型包括：
 
-- 拖拽题
-- 点选题
-- 多选图片题
+| 题型 | 是否真实遇到过 |
+| --- | --- |
+| 拖拽题 | 是 |
+| 点选题 | 是 |
+| 多选图片题 | 是 |
 
 ### 3. 页面提示 `Device not supported`
 
-这个提示通常出现在：
-
-- 商品只支持 Windows
-- GitHub Actions 运行环境是 Linux
+这个提示通常出现在商品只支持 Windows，而 GitHub Actions 运行环境是 Linux 的时候。
 
 这不代表没法领。  
 现在代码会自动尝试点击 `Continue` 继续流程。
 
 ### 4. 为什么工作流显示成功，但游戏没入库
 
-这类问题过去确实出现过，常见根因包括：
+这类问题过去确实出现过，常见根因如下：
 
-- 商品页状态识别不准
-- `Place Order` 已点击，但结账页还在二次验证
-- 页面上出现了额外弹窗
-- 以前某些文案误判成“已拥有”
+| 原因 | 说明 |
+| --- | --- |
+| 商品页状态识别不准 | 页面文案和实际状态不一致 |
+| `Place Order` 已点击但未完成 | 结账页仍停留在二次验证 |
+| 页面出现额外弹窗 | 例如设备不支持、额外确认 |
+| 旧逻辑误判 | 曾经把普通文案误判成“已拥有” |
 
 现在仓库已经把这类问题尽量改成：
 
-- 不确认成功，就不报成功
-- 自动保存截图和文本
-- 把 checkout 中间状态保留下来方便排查
+1. 不确认成功，就不报成功。
+2. 自动保存截图和文本。
+3. 把 checkout 中间状态保留下来方便排查。
 
 ### 5. 为什么日志里会看到 `btoa is read-only`
 
@@ -276,13 +264,20 @@ GitHub Actions 使用的是共享云 IP，Epic 对风控比较敏感。常见现
 
 这套配置最省心，也最容易排错。
 
-## Docker 用法
+## Docker 部署
 
 如果你不想用 GitHub Actions，也可以在自己的服务器、NAS 或本地 Docker 环境里跑。
 
-主要入口是：
+### 1. 克隆仓库
 
-- [`docker/docker-compose.yaml`](docker/docker-compose.yaml)
+```bash
+git clone https://github.com/Ronchy2000/epic-awesome-gamer.git
+cd epic-awesome-gamer
+```
+
+### 2. 修改配置
+
+主要入口是 [`docker/docker-compose.yaml`](docker/docker-compose.yaml)。
 
 GLM 示例：
 
@@ -302,6 +297,12 @@ environment:
   - GEMINI_API_KEY=your_key
   - GEMINI_BASE_URL=https://aihubmix.com
   - GEMINI_MODEL=gemini-2.5-pro
+```
+
+### 3. 启动
+
+```bash
+docker compose up -d --build
 ```
 
 ## 开发者附录
@@ -333,18 +334,17 @@ environment:
 `hcaptcha-challenger` 内部调用的是 `google-genai` 风格的多模态接口。  
 所以接 GLM 时，不能只把 `GEMINI_BASE_URL` 改成智谱地址。
 
-真正要做的是：
-
-- 保留上层调用方式
-- 在适配层里把图片、消息和结构化输出转换成 GLM 能接受的格式
+真正要做的是保留上层调用方式，再在适配层里把图片、消息和结构化输出转换成 GLM 能接受的格式。
 
 #### 2. 不同验证码阶段，题型真的会变
 
 登录阶段和 checkout 阶段的题型不一定一样。  
-这次实际碰到过：
+这次实际碰到过的类型有：
 
-- `image_drag_single`
-- `image_label_multi_select`
+| 阶段 | 题型 |
+| --- | --- |
+| 登录 | `image_drag_single` |
+| checkout | `image_label_multi_select` |
 
 如果适配层只对拖拽题做兼容，结账时就会死在第二道验证上。
 
@@ -352,45 +352,48 @@ environment:
 
 这次遇到过的返回形式包括：
 
-- `Source Position: (...)`
-- `{"source": [...], "target": [...]}`
-- `{"answer":"..."}`
-- 只返回题型名，比如 `image_label_multi_select`
-- 坏掉的半结构化 JSON
+| 返回形式 | 说明 |
+| --- | --- |
+| `Source Position: (...)` | 文本坐标 |
+| `{"source": [...], "target": [...]}` | 结构化拖拽坐标 |
+| `{"answer":"..."}` | 被包在 `answer` 里的字符串 |
+| `image_label_multi_select` | 只返回题型名 |
+| 半结构化 JSON | 字段不完整或坏掉的响应 |
 
 所以 [`llm_adapter.py`](app/extensions/llm_adapter.py) 现在做了很多“解包和转 schema”的兼容。
 
 #### 4. Epic checkout 不只会弹 hCaptcha
 
-这次已经确认过，结账过程中可能出现：
+这次已经确认过，结账过程中可能出现下面这些状态：
 
-- `Device not supported`
-- `One more step`
-- 额外的 checkout iframe
-- 页面仍停留在 `Place Order`，但实际上还没确认成功
+| 场景 | 是否遇到过 |
+| --- | --- |
+| `Device not supported` | 是 |
+| `One more step` | 是 |
+| 额外的 checkout iframe | 是 |
+| 页面仍停留在 `Place Order` | 是 |
 
 因此 [`epic_games_service.py`](app/services/epic_games_service.py) 现在做了这些事：
 
-- 检查设备不支持弹窗并尝试继续
-- 识别 checkout 安全校验
-- 在 `Place Order` 后循环观察真实结果
-- 没确认成功就不误报成功
+1. 检查设备不支持弹窗并尝试继续。
+2. 识别 checkout 安全校验。
+3. 在 `Place Order` 后循环观察真实结果。
+4. 没确认成功就不误报成功。
 
 #### 5. “已拥有”判断不能扫整页文本
 
 曾经误把页面里的版权文本 `owned by ...` 当成了“已拥有”。  
-后来修正成：
-
-- 优先看按钮和 checkout 状态
-- 只识别高精度成功文案
+后来修正成优先看按钮和 checkout 状态，只识别高精度成功文案。
 
 #### 6. artifact 非常重要
 
 真正把问题定位清楚，靠的不只是控制台日志，还包括：
 
-- `app/volumes/runtime/purchase_debug/*.png`
-- `app/volumes/runtime/purchase_debug/*.txt`
-- `app/volumes/logs/`
+| 文件 | 作用 |
+| --- | --- |
+| `app/volumes/runtime/purchase_debug/*.png` | 看页面实际长什么样 |
+| `app/volumes/runtime/purchase_debug/*.txt` | 看页面文本和 frame 内容 |
+| `app/volumes/logs/` | 看完整执行链路 |
 
 如果没有这些 artifact，很多 checkout 问题只能靠猜。
 
