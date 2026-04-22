@@ -78,6 +78,26 @@ def _normalize_glm_response_text(text: str) -> str:
             + "\n```"
         )
 
+    tuple_drag_matches = re.findall(r"\((\d+)\s*,\s*(\d+)\)", stripped)
+    if len(tuple_drag_matches) == 2:
+        (sx, sy), (tx, ty) = tuple_drag_matches
+        return (
+            "```json\n"
+            + json.dumps(
+                {
+                    "challenge_prompt": "",
+                    "paths": [
+                        {
+                            "start_point": {"x": int(sx), "y": int(sy)},
+                            "end_point": {"x": int(tx), "y": int(ty)},
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            )
+            + "\n```"
+        )
+
     point_matches = re.findall(r"\((\d+)\s*,\s*(\d+)\)", stripped)
     if point_matches and ("position" in stripped.lower() or "point" in stripped.lower()):
         points = [{"x": int(x), "y": int(y)} for x, y in point_matches]

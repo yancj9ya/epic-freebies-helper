@@ -4,6 +4,7 @@
 # GitHub     : https://github.com/QIN2DIM
 # Description: 游戏商城控制句柄
 
+import asyncio
 import json
 import time
 from contextlib import suppress
@@ -186,6 +187,23 @@ class EpicGames:
         return " ".join(body_text.upper().split())
 
     @staticmethod
+    async def _frame_texts(page: Page) -> list[str]:
+        texts: list[str] = []
+        for frame in page.frames:
+            with suppress(Exception):
+                body = frame.locator("body")
+                text = await body.text_content()
+                if text:
+                    texts.append(" ".join(text.upper().split()))
+        return texts
+
+    @staticmethod
+    async def _combined_text(page: Page) -> str:
+        chunks = [await EpicGames._page_text(page)]
+        chunks.extend(await EpicGames._frame_texts(page))
+        return "\n".join(filter(None, chunks))
+
+    @staticmethod
     async def _purchase_button_text(page: Page) -> str:
         purchase_btn = page.locator("//button[@data-testid='purchase-cta-button']").first
         with suppress(Exception):
@@ -299,8 +317,13 @@ class EpicGames:
         await page.screenshot(path=target.joinpath(f"{safe_reason}-{stamp}.png"), full_page=True)
         with suppress(Exception):
             page_text = await page.locator("body").text_content()
+            frame_texts = await EpicGames._frame_texts(page)
             target.joinpath(f"{safe_reason}-{stamp}.txt").write_text(
-                f"URL: {page.url}\nSOURCE_URL: {url}\n\n{page_text or ''}",
+                (
+                    f"URL: {page.url}\nSOURCE_URL: {url}\n\n"
+                    f"[MAIN PAGE]\n{page_text or ''}\n\n"
+                    f"[FRAMES]\n" + "\n\n--- FRAME ---\n".join(frame_texts)
+                ),
                 encoding="utf-8",
             )
         logger.info(f"Saved purchase debug screenshot - reason={reason} url={url}")
@@ -445,10 +468,11 @@ class EpicGames:
             "ONE MORE STEP",
             "PLEASE COMPLETE A SECURITY CHECK TO CONTINUE",
             "PLEASE DRAG THE ICON ON THE BOTTOM TO THE PLACE WHERE IT FITS",
+            "PLEASE DRAG THE ICON ON THE LEFT TO THE PLACE WHERE IT FITS",
             "SKIP",
         ]
-        page_text = await EpicGames._page_text(page)
-        return any(marker in page_text for marker in markers)
+        combined_text = await EpicGames._combined_text(page)
+        return any(marker in combined_text for marker in markers)
 
     async def _resolve_checkout_security_check(
         self, page: Page, agent: AgentV, url: str, max_attempts: int = 3
@@ -484,6 +508,18 @@ class EpicGames:
         await self._capture_purchase_debug(page, "checkout_security_check_unresolved", url)
         return False
 
+    async def _probe_checkout_challenge(self, page: Page, agent: AgentV, url: str) -> bool:
+        logger.debug(f"Probing checkout for latent challenge. {url=}")
+        try:
+            await asyncio.wait_for(agent.wait_for_challenge(), timeout=25)
+        except Exception as err:
+            logger.info(f"No solvable latent checkout challenge detected: {err}")
+            return False
+
+        await page.wait_for_timeout(1500)
+        await self._capture_purchase_debug(page, "checkout_challenge_probe", url)
+        return True
+
     async def _handle_instant_checkout(self, page: Page, url: str) -> bool:
         logger.info("🚀 Triggering Instant Checkout Flow...")
         agent = AgentV(page=page, agent_config=settings)
@@ -509,6 +545,8 @@ class EpicGames:
                     return False
             else:
                 logger.debug("No checkout security check detected after Place Order")
+                with suppress(Exception):
+                    await self._probe_checkout_challenge(page, agent, url)
 
             for _ in range(2):
                 await self._handle_device_not_supported_modal(page, url, timeout_ms=3000)
