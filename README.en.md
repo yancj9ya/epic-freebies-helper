@@ -68,6 +68,9 @@ In most cases, the first successful validation can be finished in about 10 minut
 
 ### 1. Fork the repository and enable Actions
 
+> [!TIP]
+> If you have already forked this repository before, go to your fork on GitHub first and click `Sync fork` -> `Update branch` so your copy is aligned with the latest upstream changes before you continue.
+
 - Fork the repo to your own GitHub account. A private fork is recommended.
 - Open `Actions` and enable the workflow named `Epic Awesome Gamer (Scheduled)`.
 
