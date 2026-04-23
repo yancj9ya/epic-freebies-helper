@@ -489,43 +489,89 @@ class EpicGames:
             "PLEASE COMPLETE A SECURITY CHECK TO CONTINUE",
             "PLEASE DRAG THE ICON ON THE BOTTOM TO THE PLACE WHERE IT FITS",
             "PLEASE DRAG THE ICON ON THE LEFT TO THE PLACE WHERE IT FITS",
-            "SKIP",
         ]
+
+        visible_locators = [
+            page.get_by_text("One more step", exact=False),
+            page.get_by_text("Please complete a security check to continue", exact=False),
+            page.locator("//iframe[contains(@src, 'hcaptcha') or contains(@title, 'hCaptcha')]"),
+        ]
+
+        for locator in visible_locators:
+            with suppress(Exception):
+                if await locator.first.is_visible(timeout=300):
+                    return True
+
         combined_text = await EpicGames._combined_text(page)
         return any(marker in combined_text for marker in markers)
 
     async def _resolve_checkout_security_check(
-        self, page: Page, agent: AgentV, url: str, max_attempts: int = 3
+        self, page: Page, agent: AgentV, url: str, max_wait_ms: int = 600000
     ) -> bool:
         if not await self._is_checkout_security_check_visible(page):
             return True
 
         logger.warning(f"Checkout security check detected - starting solve loop. {url=}")
 
-        for attempt in range(1, max_attempts + 1):
+        started_at = time.monotonic()
+        attempt = 0
+
+        while (time.monotonic() - started_at) * 1000 < max_wait_ms:
+            attempt += 1
+
+            if await self._is_claimed_state(page, url):
+                logger.success(f"Checkout security check resolved into claimed state - {url=}")
+                return True
+
             if not await self._is_checkout_security_check_visible(page):
                 logger.success(f"Checkout security check cleared before solve attempt {attempt} - {url=}")
                 return True
 
-            logger.info(f"Solving checkout security check ({attempt}/{max_attempts})")
-            await self._capture_purchase_debug(page, f"checkout_security_check_attempt_{attempt}", url)
+            elapsed_seconds = int(time.monotonic() - started_at)
+            logger.info(
+                f"Solving checkout security check (attempt {attempt}, elapsed {elapsed_seconds}s)"
+            )
+
+            if attempt <= 3 or attempt % 2 == 0:
+                await self._capture_purchase_debug(
+                    page, f"checkout_security_check_attempt_{attempt}", url
+                )
+
             await page.wait_for_timeout(2500)
 
             try:
                 await agent.wait_for_challenge()
             except Exception as err:
-                logger.warning(f"Checkout security check solve attempt failed ({attempt}/{max_attempts}): {err}")
-                await self._capture_purchase_debug(
-                    page, f"checkout_security_check_failed_{attempt}", url
+                logger.warning(
+                    f"Checkout security check solve attempt failed (attempt {attempt}): {err}"
                 )
+                if attempt <= 3 or attempt % 2 == 0:
+                    await self._capture_purchase_debug(
+                        page, f"checkout_security_check_failed_{attempt}", url
+                    )
 
             await page.wait_for_timeout(1500)
+
+            if await self._is_claimed_state(page, url):
+                logger.success(f"Checkout security check solved successfully into claimed state - {url=}")
+                return True
 
             if not await self._is_checkout_security_check_visible(page):
                 logger.success(f"Checkout security check solved successfully - {url=}")
                 return True
 
-        logger.warning(f"Checkout security check remained visible after retries - {url=}")
+            outcome = await self._observe_checkout_outcome(page, url, timeout_ms=10000)
+            logger.debug(
+                f"Checkout security check follow-up outcome after attempt {attempt}: {outcome} | {url=}"
+            )
+            if outcome == "claimed":
+                logger.success(f"Checkout security check resolved into claimed state - {url=}")
+                return True
+            if outcome == "checkout":
+                logger.success(f"Checkout security check cleared back to checkout - {url=}")
+                return True
+
+        logger.warning(f"Checkout security check remained visible after timeout - {url=}")
         await self._capture_purchase_debug(page, "checkout_security_check_unresolved", url)
         return False
 
