@@ -581,6 +581,76 @@ class EpicGames:
                 await accept.click()
                 return True
 
+    @staticmethod
+    async def _has_disabled_payment_state(payment_btn) -> bool:
+        disabled = await payment_btn.get_attribute("disabled")
+        aria_disabled = await payment_btn.get_attribute("aria-disabled")
+        class_name = (await payment_btn.get_attribute("class") or "").lower()
+
+        return (
+            disabled is not None
+            or aria_disabled == "true"
+            or "payment-btn--disabled" in class_name
+            or "disabled" in class_name.split()
+        )
+
+    @staticmethod
+    async def _visible_talon_overlay_id(page: Page) -> str | None:
+        overlay = page.locator(
+            "//*[contains(@id, 'talon_container') or contains(@class, 'talon_container')]"
+        )
+        count = await overlay.count()
+
+        for index in range(count - 1, -1, -1):
+            candidate = overlay.nth(index)
+            with suppress(Exception):
+                if not await candidate.is_visible(timeout=200):
+                    continue
+                overlay_id = await candidate.get_attribute("id")
+                if overlay_id:
+                    return overlay_id
+                return "talon_overlay"
+
+        return None
+
+    async def _wait_for_checkout_ready(
+        self, page: Page, url: str, timeout_ms: int = 15000
+    ) -> tuple[FrameLocator, object] | None:
+        elapsed = 0
+
+        while elapsed < timeout_ms:
+            if await self._is_checkout_security_check_visible(page):
+                logger.debug(f"Checkout readiness interrupted by security check. {url=}")
+                return None
+
+            try:
+                payload = await self._active_purchase_container(
+                    page, place_order_timeout=500, confirm_timeout=500
+                )
+            except AssertionError:
+                await page.wait_for_timeout(500)
+                elapsed += 500
+                continue
+
+            _wpc, payment_btn = payload
+            overlay_id = await self._visible_talon_overlay_id(page)
+            disabled_state = await self._has_disabled_payment_state(payment_btn)
+
+            if not overlay_id and not disabled_state:
+                return payload
+
+            logger.debug(
+                "Checkout container is visible but not ready yet. {} | overlay={} | button={}",
+                url,
+                overlay_id,
+                await self._payment_button_state(payment_btn),
+            )
+            await page.wait_for_timeout(750)
+            elapsed += 750
+
+        logger.debug(f"Checkout container never became ready before timeout. {url=}")
+        return None
+
     async def _wait_for_purchase_state(self, page: Page, url: str, timeout_ms: int = 20000):
         elapsed = 0
 
@@ -590,12 +660,12 @@ class EpicGames:
             if await self._is_claimed_state(page, url):
                 return "claimed", None
 
-            try:
-                return "checkout", await self._active_purchase_container(
-                    page, place_order_timeout=1000, confirm_timeout=1000
-                )
-            except AssertionError:
-                pass
+            if await self._is_checkout_security_check_visible(page):
+                return "security", None
+
+            payload = await self._wait_for_checkout_ready(page, url, timeout_ms=1000)
+            if payload is not None:
+                return "checkout", payload
 
             await page.wait_for_timeout(500)
             elapsed += 1500
@@ -911,6 +981,12 @@ class EpicGames:
                 logger.success(f"🎉 Instant checkout resolved to claimed state - {url=}")
                 return True
 
+            if state == "security":
+                if not await self._resolve_checkout_security_check(page, agent, url):
+                    return False
+                state = "checkout"
+                payload = None
+
             if state != "checkout" or payload is None:
                 logger.warning(f"Instant checkout never reached a checkout container - {url=}")
                 await self._capture_purchase_debug(page, "instant_checkout_not_reached", url)
@@ -926,6 +1002,12 @@ class EpicGames:
                     if state == "claimed":
                         logger.success(f"🎉 Instant checkout confirmed claim state after state refresh - {url=}")
                         return True
+                    if state == "security":
+                        if not await self._resolve_checkout_security_check(page, agent, url):
+                            return False
+                        state = "checkout"
+                        payload = None
+                        continue
                     if state != "checkout" or payload is None:
                         break
 
