@@ -124,11 +124,74 @@ uv run ruff check --fix
 
 | 文件 | 作用 |
 | --- | --- |
-| `epic-runtime-<run_id>` 解压后的 `purchase_debug/*.png` | 看页面实际长什么样 |
-| `epic-runtime-<run_id>` 解压后的 `purchase_debug/*.txt` | 看页面文本和 frame 内容 |
 | `epic-logs-<run_id>` 解压后的日志文件 | 看完整执行链路 |
+| `epic-runtime-<run_id>` 解压后的 `purchase_debug/*.png` | 如果存在，看商品页或 checkout 实际长什么样 |
+| `epic-runtime-<run_id>` 解压后的 `purchase_debug/*.txt` | 如果存在，看商品页文本和 frame 内容 |
+| `epic-screenshots-<run_id>` 解压后的截图 | 如果存在，看登录、风控或授权阶段的页面状态 |
 
-如果没有这些 artifact，很多 checkout 问题只能靠猜。
+`epic-runtime` 和 `epic-screenshots` 不一定同时出现。工作流会尝试上传它们，但 GitHub 只显示实际有文件的 artifact。没有进入商品页时可能没有 `runtime`；没有保存登录/风控截图时可能没有 `screenshots`。
+
+---
+
+## 2026-04-24 多用户反馈后的鲁棒性方案
+
+这轮问题来自多组真实用户 artifact，不是单个偶发异常。分析时不要只看最后一行 traceback，要同时看：
+
+1. `runtime.log` 里的最后一个业务动作。
+2. `error.log` 里的 Playwright / hCaptcha 异常类型。
+3. `purchase_debug/*.png` 里页面是否已经出现按钮、iframe、弹窗或成功确认。
+4. `purchase_debug/*.txt` 里的主页面文本和 frame 文本。
+
+### 失败模式归类
+
+| 现象 | 日志特征 | 技术判断 | 处理方向 |
+| --- | --- | --- | --- |
+| 登录连续失败 | `Timed out waiting for Epic login outcome`、`btoa is read-only`、`Challenge execution timed out` | hCaptcha 仍在页面上，或页面状态被上一轮求解污染 | 登录挑战分段重试；失败后重建页面并清 cookie |
+| 商品页打开失败 | `Page.goto: Timeout 30000ms exceeded` | 页面主体可能已可用，但 `load` 被图片、脚本或第三方资源拖住 | 改成 `domcontentloaded`；允许部分加载后继续 |
+| `Get` 按钮点击卡死 | `Locator.click: Timeout 10000ms exceeded`，截图里按钮可见 | Playwright 等待点击动作完成，但页面没有按预期返回 | 点击策略改成标准点击、dispatch、DOM click、坐标点击、force click 分层兜底 |
+| checkout 已推进但未确认 | 页面停留在 `Place Order` 或安全验证 | 点击成功不等于领取成功 | 必须继续观察订单确认、按钮状态、checkout iframe 和订单历史 |
+| 配置带换行 | 日志里模型名类似 `glm-4.6v\n` | GitHub Secrets 或用户复制配置时带入空白字符 | settings 层统一 `strip()` 字符串配置 |
+
+### 当前采用的设计原则
+
+1. **不要把单次 Playwright 超时等同于业务失败**  
+   浏览器自动化里，`click()` 超时可能只是动作等待条件没有满足。只要页面已经出现 checkout iframe、安全校验、成功文案或按钮状态变化，就应该进入下一阶段观察，而不是直接抛异常。
+
+2. **领取链路按阶段隔离重试**  
+   登录、商品页进入、购买按钮点击、checkout 下单、hCaptcha 求解、最终确认是不同故障点。一个阶段失败时，只重置这个阶段必要的状态，避免整轮流程被无关状态拖垮。
+
+3. **成功必须高置信确认**  
+   不再因为点击返回、页面跳转、或扫到宽泛文本就报成功。成功信号优先级应接近：
+
+   | 优先级 | 信号 |
+   | --- | --- |
+   | 高 | `Thanks for your order` + `Order number` |
+   | 高 | 订单历史里出现对应 namespace / offerId |
+   | 中 | 按钮变成 `In Library` / `Owned` / `View in Library` |
+   | 低 | 页面正文里的泛化文本 |
+
+4. **失败必须留下 artifact**  
+   商品页打不开、按钮找不到、点击无效、checkout 未确认，都要保存截图和文本。后续修复应基于 artifact 归类，而不是在代码里继续猜新选择器。
+
+### 修复落点
+
+| 文件 | 方案 |
+| --- | --- |
+| [`app/services/epic_authorization_service.py`](../app/services/epic_authorization_service.py) | 登录阶段识别可见 hCaptcha；登录结果等待超时后，如果验证码仍在，继续求解；单次登录失败后重建页面并清 cookie |
+| [`app/services/epic_games_service.py`](../app/services/epic_games_service.py) | 商品页导航改成可恢复加载；购买按钮点击改成多策略兜底；点击后以页面进展判断是否进入下一阶段 |
+| [`app/settings.py`](../app/settings.py) | 对模型名、Base URL、Provider、账号等字符串配置统一去除首尾空白 |
+
+### 后续排障流程
+
+后续再收到类似反馈时，建议按下面顺序处理：
+
+1. 先确认失败属于登录、商品页、按钮点击、checkout、安全验证、最终确认里的哪一段。
+2. 对照 `purchase_debug` 截图判断页面实际状态，不要只看 traceback。
+3. 如果页面已经推进到下一阶段，优先补“状态识别”和“确认逻辑”，不要只加更长 timeout。
+4. 如果是新文案或新弹窗，先把文案加入高精度判断，再加截图保存点。
+5. 如果是模型输出结构变化，优先修 [`llm_adapter.py`](../app/extensions/llm_adapter.py) 的归一化，不要把 provider 特殊逻辑散进业务流程。
+
+这类项目无法承诺绝对 100% 成功率，因为 Epic 风控、共享云 IP、验证码题型和第三方模型响应都不可控。代码层面的目标应该是：可恢复、可观测、不错报成功，并且每次失败都能留下足够证据支撑下一轮修复。
 
 ---
 

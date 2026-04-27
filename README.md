@@ -136,13 +136,13 @@ All week-free games are already in the library
 
 ## 运行日志与 Artifact
 
-每次 GitHub Actions 运行结束后，工作流会自动上传三个 artifact：
+每次 GitHub Actions 运行结束后，工作流会尝试上传下面这些 artifact。GitHub 只会显示实际有文件的 artifact，所以不同用户可能只看到其中一部分，这是正常现象。
 
-| Artifact | 内容 |
+| Artifact | 内容 | 通常什么时候出现 |
 | --- | --- |
-| `epic-runtime-<run_id>` | 运行期截图、debug 文本、purchase_debug |
-| `epic-logs-<run_id>` | 运行日志 |
-| `epic-screenshots-<run_id>` | 登录失败、风控页、授权页等额外截图 |
+| `epic-logs-<run_id>` | 运行日志 | 基本每次运行都会有 |
+| `epic-runtime-<run_id>` | `promotions.json`、`purchase_debug` 截图和文本 | 已进入周免领取、商品页或 checkout 阶段时常见 |
+| `epic-screenshots-<run_id>` | 登录失败、风控页、授权页等额外截图 | 登录、风控或授权阶段保存过截图时才会有 |
 
 下载位置：
 
@@ -155,8 +155,9 @@ All week-free games are already in the library
 
 | 文件包 | 先看什么 |
 | --- | --- |
-| `epic-runtime-<run_id>.zip` | 解压后优先看 `purchase_debug/` 里的截图和调试文本 |
 | `epic-logs-<run_id>.zip` | 解压后直接看里面的日志文件 |
+| `epic-runtime-<run_id>.zip` | 如果存在，解压后优先看 `purchase_debug/` 里的截图和调试文本 |
+| `epic-screenshots-<run_id>.zip` | 如果存在，优先看登录页、风控页或授权页截图 |
 
 这些内容是 GitHub Actions 每次运行后打包上传的产物，不是仓库根目录里预置好的固定目录。
 
@@ -164,10 +165,10 @@ All week-free games are already in the library
 
 1. 打开出问题的 GitHub Actions 运行页面。
 2. 拉到页面底部，找到 `Artifacts`。
-3. 下载这些文件：
-   - `epic-logs-<run_id>.zip`
-   - `epic-runtime-<run_id>.zip`
-   - `epic-screenshots-<run_id>.zip`
+3. 下载页面中实际出现的 artifact：
+   - `epic-logs-<run_id>.zip`：优先下载，通常每次都有
+   - `epic-runtime-<run_id>.zip`：如果页面中有这个包就下载
+   - `epic-screenshots-<run_id>.zip`：如果页面中有这个包就下载
 4. 新建 issue。
 5. 把这些 zip 直接拖进 issue 编辑框，或者点击附件按钮上传。
 
@@ -213,6 +214,8 @@ All week-free games are already in the library
 ### 4. 页面提示 `Device not supported`
 
 这个提示通常出现在商品只支持 Windows，而 GitHub Actions 运行环境是 Linux 的时候。
+
+它本身不一定代表领取失败。当前脚本会尝试自动点击弹窗里的 `Continue` 继续进入后续流程。
 
 ### 5. 为什么工作流显示成功，但游戏没入库
 
@@ -276,6 +279,7 @@ docker compose up -d --build
 
 - [开发者进阶文档](docs/advanced.md)
 - [Advanced Guide (English)](docs/advanced.en.md)
+- [维护日志](docs/maintenance-log.md)
 
 ---
 

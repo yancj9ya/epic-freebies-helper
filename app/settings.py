@@ -37,48 +37,31 @@ def _coerce_secret_input(value: object) -> str | None:
     value = str(value).strip()
     return value or None
 
+
 # === 配置类定义 ===
 class EpicSettings(AgentConfig):
     model_config = SettingsConfigDict(env_file=".env", env_ignore_empty=True, extra="ignore")
 
-    GEMINI_API_KEY: SecretStr | None = Field(
-        default=None,
-        description="Gemini/AiHubMix API key",
-    )
+    GEMINI_API_KEY: SecretStr | None = Field(default=None, description="Gemini/AiHubMix API key")
 
     GEMINI_BASE_URL: str = Field(
-        default="https://aihubmix.com",
-        description="Gemini/AiHubMix base URL",
+        default="https://aihubmix.com", description="Gemini/AiHubMix base URL"
     )
 
-    GEMINI_MODEL: str = Field(
-        default="gemini-2.5-pro",
-        description="Gemini default model",
-    )
+    GEMINI_MODEL: str = Field(default="gemini-2.5-pro", description="Gemini default model")
 
-    LLM_PROVIDER: str = Field(
-        default="",
-        description="Supported values: gemini, glm",
-    )
+    LLM_PROVIDER: str = Field(default="", description="Supported values: gemini, glm")
 
-    GLM_API_KEY: SecretStr | None = Field(
-        default=None,
-        description="GLM API key",
-    )
+    GLM_API_KEY: SecretStr | None = Field(default=None, description="GLM API key")
 
     GLM_BASE_URL: str = Field(
-        default="https://open.bigmodel.cn/api/paas/v4",
-        description="GLM OpenAI-compatible base URL",
+        default="https://open.bigmodel.cn/api/paas/v4", description="GLM OpenAI-compatible base URL"
     )
 
-    GLM_MODEL: str = Field(
-        default="glm-4.5v",
-        description="GLM vision-capable default model",
-    )
+    GLM_MODEL: str = Field(default="glm-4.5v", description="GLM vision-capable default model")
 
     BROWSER_BACKEND: str = Field(
-        default="auto",
-        description="Supported values: auto, camoufox, playwright",
+        default="auto", description="Supported values: auto, camoufox, playwright"
     )
 
     EPIC_EMAIL: str = Field(default_factory=lambda: _env("EPIC_EMAIL"))
@@ -123,6 +106,23 @@ class EpicSettings(AgentConfig):
 
     @model_validator(mode="after")
     def _apply_runtime_defaults(self):
+        for field_name in (
+            "GEMINI_BASE_URL",
+            "GEMINI_MODEL",
+            "LLM_PROVIDER",
+            "GLM_BASE_URL",
+            "GLM_MODEL",
+            "BROWSER_BACKEND",
+            "EPIC_EMAIL",
+            "CHALLENGE_CLASSIFIER_MODEL",
+            "IMAGE_CLASSIFIER_MODEL",
+            "SPATIAL_POINT_REASONER_MODEL",
+            "SPATIAL_PATH_REASONER_MODEL",
+        ):
+            value = getattr(self, field_name, None)
+            if isinstance(value, str):
+                setattr(self, field_name, value.strip())
+
         provider = (self.LLM_PROVIDER or "").strip().lower()
         if provider not in {"gemini", "glm"}:
             provider = "glm" if self.GLM_API_KEY else "gemini"
@@ -157,6 +157,7 @@ class EpicSettings(AgentConfig):
         target_ = USER_DATA_DIR.joinpath(f"{self.EPIC_EMAIL}{suffix}")
         target_.mkdir(parents=True, exist_ok=True)
         return target_
+
 
 settings = EpicSettings()
 settings.ignore_request_questions = ["Please drag the crossing to complete the lines"]

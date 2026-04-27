@@ -102,6 +102,37 @@ class EpicAuthorization:
             )
         )
 
+    async def _has_visible_hcaptcha(self) -> bool:
+        for frame in self.page.frames:
+            if "hcaptcha" in (frame.url or "").lower():
+                with suppress(Exception):
+                    frame_element = await frame.frame_element()
+                    visible = await frame_element.evaluate(
+                        """
+                        (element) => {
+                          const rect = element.getBoundingClientRect();
+                          const style = window.getComputedStyle(element);
+                          return rect.width > 0 && rect.height > 0 &&
+                            style.visibility !== 'hidden' &&
+                            style.display !== 'none' &&
+                            style.opacity !== '0';
+                        }
+                        """
+                    )
+                    if visible:
+                        return True
+
+        body = (await self._page_body_text()).lower()
+        return any(
+            marker in body
+            for marker in (
+                "one more step",
+                "please complete a security check",
+                "verify you are human",
+                "i am human",
+            )
+        )
+
     async def _wait_for_login_form(self, point_url: str) -> None:
         deadline = time.monotonic() + 45
         recovery_attempts = 0
@@ -135,8 +166,8 @@ class EpicAuthorization:
 
         raise PlaywrightTimeoutError("Timed out waiting for Epic login form")
 
-    async def _await_login_outcome(self, point_url: str) -> None:
-        deadline = time.monotonic() + 60
+    async def _await_login_outcome(self, point_url: str, timeout_seconds: int = 60) -> None:
+        deadline = time.monotonic() + timeout_seconds
 
         while time.monotonic() < deadline:
             if "true" == await self._get_login_status():
@@ -168,6 +199,13 @@ class EpicAuthorization:
             await self.page.wait_for_timeout(500)
 
         raise PlaywrightTimeoutError("Timed out waiting for Epic login outcome")
+
+    async def _replace_page(self) -> None:
+        old_page = self.page
+        self.page = await old_page.context.new_page()
+        self.page.on("response", self._on_response_anything)
+        with suppress(Exception):
+            await old_page.close()
 
     async def _get_login_status(self) -> str | None:
         if self._needs_privacy_policy_correction():
@@ -214,11 +252,27 @@ class EpicAuthorization:
             # Active hCaptcha checkbox
             await self.page.click("#sign-in")
 
-            # Active hCaptcha challenge
-            await agent.wait_for_challenge()
+            login_confirmed = False
+            for challenge_attempt in range(1, 4):
+                logger.debug("Solving login challenge attempt {}/3", challenge_attempt)
+                with suppress(Exception):
+                    await agent.wait_for_challenge()
 
-            # Wait for the page to redirect or surface an explicit Epic login error.
-            await self._await_login_outcome(point_url)
+                try:
+                    await self._await_login_outcome(point_url, timeout_seconds=25)
+                    login_confirmed = True
+                    break
+                except PlaywrightTimeoutError:
+                    if not await self._has_visible_hcaptcha():
+                        raise
+                    logger.warning(
+                        "Login outcome timed out while captcha is still visible; retrying solve "
+                        "attempt {}/3",
+                        challenge_attempt,
+                    )
+
+            if not login_confirmed:
+                await self._await_login_outcome(point_url, timeout_seconds=10)
             logger.success("Login success")
 
             await asyncio.wait_for(self._handle_right_account_validation(), timeout=60)
@@ -234,7 +288,7 @@ class EpicAuthorization:
     async def invoke(self) -> bool:
         self.page.on("response", self._on_response_anything)
 
-        for _ in range(3):
+        for attempt in range(1, 4):
             await self.page.goto(URL_CLAIM, wait_until="domcontentloaded")
 
             if self._needs_privacy_policy_correction():
@@ -250,6 +304,14 @@ class EpicAuthorization:
 
             if await self._login():
                 return True
+
+            if attempt < 3:
+                logger.warning(
+                    "Authentication attempt {}/3 failed; resetting page state before retry", attempt
+                )
+                with suppress(Exception):
+                    await self.page.context.clear_cookies()
+                await self._replace_page()
 
         logger.error("Epic Games authentication failed after 3 attempts")
         return False

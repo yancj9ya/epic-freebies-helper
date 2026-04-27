@@ -74,3 +74,7 @@ Environment variables are managed through `EpicSettings` class in `settings.py`:
 Test execution is not allowed.
 
 ## Development Notes
+
+- Any change that affects runtime behavior, bug handling, troubleshooting flow, user-facing guidance, or expected outcomes must be appended to `docs/maintenance-log.md` before finishing the task.
+- Each maintenance-log entry should include at least: date, symptom, root-cause judgment, changed files, and result.
+- Append only. Do not rewrite or remove older records unless the user explicitly asks for cleanup.

@@ -14,10 +14,15 @@ from pydantic import BaseModel
 KNOWN_CHALLENGE_TYPES = {
     "image_drag_single",
     "image_drag_multiple",
+    "image_drag_multi",
     "image_label_binary",
     "image_label_multi_select",
     "image_label_area_select",
     "image_label_multiple_choice",
+}
+
+CHALLENGE_TYPE_ALIASES = {
+    "image_drag_multi": "image_drag_multiple",
 }
 
 
@@ -127,6 +132,7 @@ def _normalize_glm_response_text(text: str) -> str:
 
 def _extract_challenge_type(text: str) -> str | None:
     stripped = text.strip().strip('"').strip("'")
+    stripped = CHALLENGE_TYPE_ALIASES.get(stripped, stripped)
     if stripped in KNOWN_CHALLENGE_TYPES:
         return stripped
     return None
@@ -245,6 +251,91 @@ def _coerce_point(value: Any) -> dict[str, int] | None:
     return None
 
 
+def _coerce_area_box(value: Any) -> dict[str, int] | None:
+    if isinstance(value, dict):
+        keys = {"x_min", "y_min", "x_max", "y_max"}
+        if keys.issubset(value.keys()):
+            return {
+                "x_min": int(value["x_min"]),
+                "y_min": int(value["y_min"]),
+                "x_max": int(value["x_max"]),
+                "y_max": int(value["y_max"]),
+            }
+        return None
+
+    if isinstance(value, (list, tuple)) and len(value) >= 4:
+        return {
+            "x_min": int(value[0]),
+            "y_min": int(value[1]),
+            "x_max": int(value[2]),
+            "y_max": int(value[3]),
+        }
+
+    if isinstance(value, str):
+        matches = re.findall(r"\d+", value)
+        if len(matches) >= 4:
+            x_min, y_min, x_max, y_max = map(int, matches[:4])
+            return {
+                "x_min": x_min,
+                "y_min": y_min,
+                "x_max": x_max,
+                "y_max": y_max,
+            }
+
+    return None
+
+
+def _extract_area_boxes_from_text(text: str) -> list[dict[str, int]]:
+    stripped = text.strip()
+    if not stripped:
+        return []
+
+    with suppress(Exception):
+        payload = _extract_json_payload(stripped)
+        answer_payload = payload.get("answer")
+        if isinstance(answer_payload, list):
+            boxes = []
+            for item in answer_payload:
+                normalized = _coerce_area_box(item)
+                if normalized:
+                    boxes.append(normalized)
+            if boxes:
+                return boxes
+
+    dict_boxes = re.findall(
+        r'"x_min"\s*:\s*(\d+)\s*,\s*"y_min"\s*:\s*(\d+)\s*,\s*"x_max"\s*:\s*(\d+)\s*,\s*"y_max"\s*:\s*(\d+)',
+        stripped,
+        flags=re.IGNORECASE,
+    )
+    if dict_boxes:
+        return [
+            {
+                "x_min": int(x_min),
+                "y_min": int(y_min),
+                "x_max": int(x_max),
+                "y_max": int(y_max),
+            }
+            for x_min, y_min, x_max, y_max in dict_boxes
+        ]
+
+    tuple_boxes = re.findall(
+        r"\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]",
+        stripped,
+    )
+    if tuple_boxes:
+        return [
+            {
+                "x_min": int(x_min),
+                "y_min": int(y_min),
+                "x_max": int(x_max),
+                "y_max": int(y_max),
+            }
+            for x_min, y_min, x_max, y_max in tuple_boxes
+        ]
+
+    return []
+
+
 def _build_points_payload(
     points: list[dict[str, int]],
     *,
@@ -258,6 +349,22 @@ def _build_points_payload(
         "challenge_prompt": challenge_prompt,
         "inferred_rule": inferred_rule,
         "points": points,
+    }
+
+
+def _build_area_select_payload(
+    boxes: list[dict[str, int]],
+    *,
+    challenge_prompt: str = "",
+    inferred_rule: str = "",
+) -> dict[str, Any] | None:
+    if not boxes:
+        return None
+
+    return {
+        "challenge_prompt": challenge_prompt,
+        "inferred_rule": inferred_rule,
+        "points": boxes,
     }
 
 
@@ -418,6 +525,28 @@ def _coerce_payload_for_schema(payload: dict[str, Any], schema: Any, text: str) 
             return normalized_drag
 
     if "points" in fields:
+        area_payload = _build_area_select_payload(
+            _extract_area_boxes_from_text(text),
+            challenge_prompt=challenge_prompt,
+            inferred_rule=inferred_rule,
+        )
+        if area_payload:
+            return area_payload
+
+        answer_payload = payload.get("answer")
+        if isinstance(answer_payload, list):
+            boxes = []
+            for item in answer_payload:
+                normalized = _coerce_area_box(item)
+                if normalized:
+                    boxes.append(normalized)
+            if boxes:
+                return _build_area_select_payload(
+                    boxes,
+                    challenge_prompt=challenge_prompt,
+                    inferred_rule=inferred_rule,
+                )
+
         if "points" in payload:
             payload.setdefault("challenge_prompt", challenge_prompt)
             payload.setdefault("inferred_rule", inferred_rule)
