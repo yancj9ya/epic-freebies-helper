@@ -15,6 +15,21 @@
 
 ## 2026-04-28
 
+### 重新补回 Codex 的 Karpathy 风格工作准则
+
+- 现象：
+  - 之前已经为 Codex 接入的 Karpathy 风格工作规则从项目指令中被删除。
+  - 当前 `AGENTS.md` 不再包含针对 Codex 的“先澄清假设、简洁优先、精准修改、目标驱动验证”等约束。
+- 根因判断：
+  - 这是项目文档层面的回退，不是 Codex 全局 skill 安装失效。
+  - `~/.codex/skills/karpathy-guidelines` 仍然存在，但缺少仓库级 `AGENTS.md` 约束后，当前项目内的默认行为提示会变弱。
+- 改动文件：
+  - `AGENTS.md`
+  - `docs/maintenance-log.md`
+- 处理结果：
+  - 重新在 `AGENTS.md` 追加 Karpathy 风格的 Codex 工作规则，恢复“编码前思考、简洁优先、精准修改、目标驱动执行”四个原则。
+  - 保留原有项目说明不变，并继续兼容本仓库“禁止跑测试”的限制。
+
 ### 默认 GitHub Actions 调度改为每周一次
 
 - 现象：
